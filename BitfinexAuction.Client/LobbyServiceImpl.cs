@@ -103,6 +103,7 @@ namespace BitfinexAuction.Client
         {
             LobbyUser user = UserNames.FirstOrDefault(u => u.Id == request.LobbyUserId);
             request.AuctionItem.Owner = user.Username;
+            request.AuctionItem.OwnerId = user.Id;
             request.AuctionItem.Id = nextAuctionID++;
             Auctions.Add(request.AuctionItem);
 
@@ -119,6 +120,7 @@ namespace BitfinexAuction.Client
             {
                 Id = -1
             };
+            message.Users.AddRange(UserNames);
             message.Auctions.AddRange(Auctions);
 
             // Send to connected clients
@@ -128,15 +130,24 @@ namespace BitfinexAuction.Client
             }
         }
 
-        public override Task<GetAuctionsResponse> CloseAuction(CloseAuctionMessage request, ServerCallContext context)
+        public override async Task<GetAuctionsResponse> CloseAuction(CloseAuctionMessage request, ServerCallContext context)
         {
-            AuctionItem auction = Auctions.FirstOrDefault(a => a.Id == request.LobbyUserId);
+            AuctionItem auction = Auctions.FirstOrDefault(a => a.Id == request.AuctionItem.Id);
             if (auction != null)
             {
-                auction.IsOpen = false;
+                if(auction.OwnerId == request.LobbyUserId)
+                    auction.IsOpen = false;
             }
 
-            return base.CloseAuction(request, context);
+            await _UpdateClientsAuctions();
+
+            if (auction != null)
+            {
+                if (!auction.IsOpen)
+                    Auctions.Remove(auction);
+            }
+            return await base.CloseAuction(request, context);
         }
+
     }
 }

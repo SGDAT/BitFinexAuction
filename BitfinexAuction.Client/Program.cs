@@ -128,7 +128,7 @@ internal class Program
         while (await _announceCall.ResponseStream.MoveNext(CancellationToken.None))
         {
             var serverMessage = _announceCall.ResponseStream.Current;
-            if(serverMessage.Id >= 0)
+            if(serverMessage.Id >= 0 && userID <= 0)
                 userID = serverMessage.Id;
 
             var otherClientMessage = serverMessage.Message;
@@ -139,6 +139,15 @@ internal class Program
             }
             UserNames = new List<LobbyUser>(serverMessage.Users);
             Auctions = new List<AuctionItem>(serverMessage.Auctions);
+            AuctionItem finishedAuction = Auctions.FirstOrDefault(a => !a.IsOpen);
+            if(finishedAuction != null)
+            {
+                var displayMessage = string.Format($"The auction for {finishedAuction.ProductName} has ended, sold to {finishedAuction.Winner} for {finishedAuction.Cost}");
+
+                Console.WriteLine(displayMessage);
+
+                Auctions.Remove(finishedAuction);
+            }
             ShowAllUsers();
             ShowAllAuctions();
 
@@ -193,62 +202,92 @@ internal class Program
 
             // Get the user's input
             choice = Console.ReadLine();
+            int auctionId;
 
-            // Use a switch statement to execute different actions based on the user's choice
-            switch (choice)
+            try
             {
-                case "1":
-                    // Open Auction
-                    Console.WriteLine("Please enter the product name");
-                    string productName = Console.ReadLine();
-                    Console.WriteLine("Please enter the starting cost");
-                    int cost = Int32.Parse(Console.ReadLine());
+                // Use a switch statement to execute different actions based on the user's choice
+                switch (choice)
+                {
+                    case "1":
+                        // Open Auction
+                        Console.WriteLine("Please enter the product name");
+                        string productName = Console.ReadLine();
+                        Console.WriteLine("Please enter the starting cost");
+                        float cost = float.Parse(Console.ReadLine());
 
-                    GetAuctionsResponse createAuctionsResponse = _lobbyService.CreateAuction(new CreateAuctionMessage
-                    {
-                        AuctionItem = new AuctionItem
+                        GetAuctionsResponse createAuctionsResponse = _lobbyService.CreateAuction(new CreateAuctionMessage
                         {
-                            Cost = cost,
-                            ProductName = productName,
-                            IsOpen = true,
-                        },
-                        LobbyUserId = userID
-                    });
+                            AuctionItem = new AuctionItem
+                            {
+                                Cost = cost,
+                                ProductName = productName,
+                                IsOpen = true,
+                            },
+                            LobbyUserId = userID
+                        });
 
-                    Auctions.Clear();
-                    Auctions.AddRange(createAuctionsResponse.Auctions);
+                        Auctions.Clear();
+                        Auctions.AddRange(createAuctionsResponse.Auctions);
 
 
-                    break;
-                case "2":
-                    GetAuctions();
-                    break;
-                case "3":
-                    // Bid on Auction
-                    Console.WriteLine("Please auction id");
-                    int auctionId = Int32.Parse(Console.ReadLine());
+                        break;
+                    case "2":
+                        //Update Auction
+                        GetAuctions();
+                        break;
+                    case "3":
+                        // Bid on Auction
+                        Console.WriteLine("Please auction id");
+                        auctionId = Int32.Parse(Console.ReadLine());
 
-                    Console.WriteLine("Please enter your bid");
-                    int bidAmount = Int32.Parse(Console.ReadLine());
+                        Console.WriteLine("Please enter your bid");
+                        float bidAmount = float.Parse(Console.ReadLine());
 
-                    GetAuctionsResponse submitBidResponse = _lobbyService.SubmitBid(new BidMessage
-                    {
-                       AuctionItemId = auctionId,
-                       BidAmount = bidAmount,
-                       LobbyUserId = userID
-                    });
+                        GetAuctionsResponse submitBidResponse = _lobbyService.SubmitBid(new BidMessage
+                        {
+                            AuctionItemId = auctionId,
+                            BidAmount = bidAmount,
+                            LobbyUserId = userID
+                        });
 
-                    Auctions.Clear();
-                    Auctions.AddRange(submitBidResponse.Auctions);
-                    break;
-                case "4":
-                    // Close Auction
-                    break;
-                default:
-                    // Handle invalid input
-                    Console.WriteLine("Invalid option. Please try again.");
-                    break;
+                        Auctions.Clear();
+                        Auctions.AddRange(submitBidResponse.Auctions);
+                        break;
+                    case "4":
+                        // Close Auction
+                        Console.WriteLine("Please auction id");
+                        auctionId = Int32.Parse(Console.ReadLine());
+
+                        AuctionItem closingAuction = Auctions.FirstOrDefault(a => a.Id == auctionId && a.OwnerId == userID);
+                        if (closingAuction != null)
+                        {
+                            GetAuctionsResponse closeAuctionResponse = _lobbyService.CloseAuction(new CloseAuctionMessage
+                            {
+                                LobbyUserId = userID,
+                                AuctionItem = closingAuction,
+                            });
+
+                            Auctions.Clear();
+                            Auctions.AddRange(closeAuctionResponse.Auctions);
+                        }
+                        else
+                        {
+                            Console.WriteLine("This is not your auction.");
+                        }
+                        break;
+                    default:
+                        // Handle invalid input
+                        Console.WriteLine("Invalid option. Please try again.");
+                        break;
+                }
             }
+            catch(Exception e)
+            {
+                Console.WriteLine("There seems to be a problem. Please try again.");
+
+            }
+
         }
 
         
@@ -256,7 +295,6 @@ internal class Program
 
     private static void GetAuctions()
     {
-        //Update Auction
         GetAuctionsResponse getAuctionsResponse = _lobbyService.GetAuctions(new LobbyMessage());
 
         Auctions.Clear();
