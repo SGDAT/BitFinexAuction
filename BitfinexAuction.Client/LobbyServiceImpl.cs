@@ -26,6 +26,7 @@ namespace BitfinexAuction.Client
             while (await requestStream.MoveNext(CancellationToken.None))
             {
                 AnnounceResponse message = RegisterUser(requestStream);
+                message.Auctions.AddRange(Auctions);
 
                 // Send to connected clients
                 foreach (var stream in announceResponseStreams)
@@ -71,29 +72,34 @@ namespace BitfinexAuction.Client
             return Task.FromResult(response);
         }
 
-        public override Task<GetAuctionsResponse> SubmitBid(BidMessage request, ServerCallContext context)
+        public override async Task<GetAuctionsResponse> SubmitBid(BidMessage request, ServerCallContext context)
         {
             AuctionItem auction = Auctions.FirstOrDefault(a => a.Id == request.AuctionItemId);
-            LobbyUser user = UserNames.FirstOrDefault(u => u.Id == request.LobbyUserId);
-            Bid newBid = new Bid
+            if(auction != null)
             {
-                LobbyUser = user,
-                BidAmount = request.BidAmount,
-            };
-            auction.Bids.Add(newBid);
-            if(request.BidAmount > auction.Cost)
-            {
-                auction.Winner = user.Username;
-                auction.Cost = request.BidAmount;
+                LobbyUser user = UserNames.FirstOrDefault(u => u.Id == request.LobbyUserId);
+                Bid newBid = new Bid
+                {
+                    LobbyUser = user,
+                    BidAmount = request.BidAmount,
+                };
+                auction.Bids.Add(newBid);
+                if (request.BidAmount > auction.Cost)
+                {
+                    auction.Winner = user.Username;
+                    auction.Cost = request.BidAmount;
+                }
+
+                await _UpdateClientsAuctions();
             }
 
             GetAuctionsResponse response = new GetAuctionsResponse();
             response.Auctions.AddRange(Auctions);
 
-            return Task.FromResult(response);
+            return await Task.FromResult(response);
         }
 
-        public override Task<GetAuctionsResponse> CreateAuction(CreateAuctionMessage request, ServerCallContext context)
+        public override async Task<GetAuctionsResponse> CreateAuction(CreateAuctionMessage request, ServerCallContext context)
         {
             LobbyUser user = UserNames.FirstOrDefault(u => u.Id == request.LobbyUserId);
             request.AuctionItem.Owner = user.Username;
@@ -102,16 +108,33 @@ namespace BitfinexAuction.Client
 
             GetAuctionsResponse response = new GetAuctionsResponse();
             response.Auctions.AddRange(Auctions);
+            await _UpdateClientsAuctions();
 
-            return Task.FromResult(response);
+            return await Task.FromResult(response);
         }
 
+        private async Task _UpdateClientsAuctions()
+        {
+            AnnounceResponse message = new AnnounceResponse()
+            {
+                Id = -1
+            };
+            message.Auctions.AddRange(Auctions);
 
+            // Send to connected clients
+            foreach (var stream in announceResponseStreams)
+            {
+                await stream.WriteAsync(message);
+            }
+        }
 
         public override Task<GetAuctionsResponse> CloseAuction(CloseAuctionMessage request, ServerCallContext context)
         {
             AuctionItem auction = Auctions.FirstOrDefault(a => a.Id == request.LobbyUserId);
-            auction.IsOpen = false;
+            if (auction != null)
+            {
+                auction.IsOpen = false;
+            }
 
             return base.CloseAuction(request, context);
         }

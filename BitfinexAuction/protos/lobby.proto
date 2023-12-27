@@ -25,6 +25,8 @@ message AnnounceResponse {
 	int32 id = 1;
 	LobbyMessage message = 2; 
 	repeated LobbyUser users = 3;
+	repeated AuctionItem auctions = 4;
+	
 }
 
 message GetAuctionsResponse {

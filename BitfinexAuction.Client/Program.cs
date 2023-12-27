@@ -122,19 +122,25 @@ internal class Program
             _lobbyService = new LobbyService.LobbyServiceClient(channel);
 
         // Open a connection to the server
-        _announceCall = _lobbyService.Announce();
+        //_announceCall = _lobbyService.Announce();
 
 
         while (await _announceCall.ResponseStream.MoveNext(CancellationToken.None))
         {
             var serverMessage = _announceCall.ResponseStream.Current;
-            userID = serverMessage.Id;
-            var otherClientMessage = serverMessage.Message;
-            var displayMessage = string.Format($"{otherClientMessage.Username} is here.");
-            Console.WriteLine(displayMessage);
+            if(serverMessage.Id >= 0)
+                userID = serverMessage.Id;
 
+            var otherClientMessage = serverMessage.Message;
+            if (otherClientMessage != null)
+            {
+                var displayMessage = string.Format($"{otherClientMessage.Username} is here.");
+                Console.WriteLine(displayMessage);
+            }
             UserNames = new List<LobbyUser>(serverMessage.Users);
+            Auctions = new List<AuctionItem>(serverMessage.Auctions);
             ShowAllUsers();
+            ShowAllAuctions();
 
         }
 
@@ -149,7 +155,7 @@ internal class Program
 
     private static void ShowAllAuctions()
     {
-        var otherAuctions = $"All available auctions: {string.Join(",", Auctions.Select(a=> $"id: {a.Id} - name: {a.ProductName}"))}";
+        var otherAuctions = $"All available auctions: {string.Join(",", Auctions.Select(a=> $"id: {a.Id} - name: {a.ProductName} - current bid: {a.Cost} - winning: {a.Winner}"))}";
         Console.WriteLine(otherAuctions);
     }
 
@@ -215,14 +221,25 @@ internal class Program
 
                     break;
                 case "2":
-                    //Update Auction
-                    GetAuctionsResponse getAuctionsResponse = _lobbyService.GetAuctions(new LobbyMessage());
-
-                    Auctions.Clear();
-                    Auctions.AddRange(getAuctionsResponse.Auctions);
+                    GetAuctions();
                     break;
                 case "3":
                     // Bid on Auction
+                    Console.WriteLine("Please auction id");
+                    int auctionId = Int32.Parse(Console.ReadLine());
+
+                    Console.WriteLine("Please enter your bid");
+                    int bidAmount = Int32.Parse(Console.ReadLine());
+
+                    GetAuctionsResponse submitBidResponse = _lobbyService.SubmitBid(new BidMessage
+                    {
+                       AuctionItemId = auctionId,
+                       BidAmount = bidAmount,
+                       LobbyUserId = userID
+                    });
+
+                    Auctions.Clear();
+                    Auctions.AddRange(submitBidResponse.Auctions);
                     break;
                 case "4":
                     // Close Auction
@@ -237,6 +254,12 @@ internal class Program
         
     }
 
+    private static void GetAuctions()
+    {
+        //Update Auction
+        GetAuctionsResponse getAuctionsResponse = _lobbyService.GetAuctions(new LobbyMessage());
 
-
+        Auctions.Clear();
+        Auctions.AddRange(getAuctionsResponse.Auctions);
+    }
 }
