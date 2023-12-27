@@ -1,0 +1,64 @@
+﻿syntax = "proto3";
+
+option csharp_namespace = "Lobby";
+
+service LobbyService {
+	rpc Announce (stream LobbyMessage) returns (stream AnnounceResponse) {}
+	rpc GetAuctions (LobbyMessage) returns (GetAuctionsResponse) {}
+	rpc SubmitBid (BidMessage) returns (GetAuctionsResponse) {}
+	rpc CreateAuction (CreateAuctionMessage) returns (GetAuctionsResponse) {}
+	rpc CloseAuction (CloseAuctionMessage) returns (GetAuctionsResponse) {}
+}
+
+
+message LobbyMessage{
+	string username = 1;
+}
+
+message LobbyUser{
+	int32 id = 1;
+	string username = 2;
+
+}
+
+message AnnounceResponse {
+	int32 id = 1;
+	LobbyMessage message = 2; 
+	repeated LobbyUser users = 3;
+}
+
+message GetAuctionsResponse {
+	repeated AuctionItem auctions = 1;
+}
+
+
+message BidMessage{
+	int32 lobbyUserId = 1;
+	int32 auctionItemId = 2;
+	int32 bidAmount = 3;
+}
+
+message CreateAuctionMessage{
+	int32 lobbyUserId = 1;
+	AuctionItem auctionItem = 2;
+}
+
+message CloseAuctionMessage{
+	int32 lobbyUserId = 1;
+	AuctionItem auctionItem = 2;
+}
+
+message AuctionItem{
+	int32 id = 1;
+	string productName = 2; 
+	int32 cost = 3;
+	repeated Bid bids = 4;
+	bool isOpen = 5;
+	string owner = 6;
+	string winner = 7;
+}
+
+message Bid{
+	LobbyUser lobbyUser = 1;
+	int32 bidAmount = 2;
+}
