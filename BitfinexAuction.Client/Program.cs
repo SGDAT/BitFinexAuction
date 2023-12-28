@@ -1,4 +1,7 @@
-﻿// See https://aka.ms/new-console-template for more information
+﻿/// This code was written by Samson Gabriels
+/// https://github.com/SGDAT/BitFinexAuction
+/// 
+
 using BitfinexAuction.Client;
 using Grpc.Core;
 using Lobby;
@@ -15,8 +18,6 @@ internal class Program
     static AsyncDuplexStreamingCall<LobbyMessage, AnnounceResponse> _announceCall;
     static Channel channel;
 
-    static int position;
-    static Enums.Mode mode;
     static int userID = -1;
     static string userName = null;
 
@@ -31,16 +32,6 @@ internal class Program
         await InitializeGrpc();
 
 
-
-        //var message = new LobbyMessage
-        //{
-        //    Username = "username",
-        //};
-
-        //if (_call != null)
-        //{
-        //    await _call.RequestStream.WriteAsync(message);
-        //}
     }
 
     async static Task InitializeGrpc()
@@ -51,22 +42,25 @@ internal class Program
 
         try
         {
-            mode = Enums.Mode.Client;
+            //connect to the server
             await AnnouncePresence();
             Task.Run(() => InitialiseAsClient());
             ShowMenu();
         }
         catch (RpcException e)
         {
+            //if the server does not exist, create a new server
             if(e.StatusCode == StatusCode.Unavailable)
             {
-                position = 0;
-                mode = Enums.Mode.ServerClient;
                 await InitialiseAsServer();
                 await Task.Delay(1000);
+
+                //now that we have a new server (on this client), start listening as if we are a client
                 Task.Run(()=> InitialiseAsClient());
 
+                //connect to myself as a client
                 await AnnouncePresence();
+
                 ShowMenu();
             }
 
@@ -121,24 +115,30 @@ internal class Program
         if(_lobbyService == null)
             _lobbyService = new LobbyService.LobbyServiceClient(channel);
 
-        // Open a connection to the server
-        //_announceCall = _lobbyService.Announce();
-
-
+        //Process messages sent back from server
         while (await _announceCall.ResponseStream.MoveNext(CancellationToken.None))
         {
             var serverMessage = _announceCall.ResponseStream.Current;
+
+            //set our own user id
             if(serverMessage.Id >= 0 && userID <= 0)
                 userID = serverMessage.Id;
 
+            //if there are new clients connected, let us know about it
             var otherClientMessage = serverMessage.Message;
             if (otherClientMessage != null)
             {
                 var displayMessage = string.Format($"{otherClientMessage.Username} is here.");
                 Console.WriteLine(displayMessage);
             }
+
+            //store the total list of users sent back from server
             UserNames = new List<LobbyUser>(serverMessage.Users);
+
+            //store any auctions the server has responded with
             Auctions = new List<AuctionItem>(serverMessage.Auctions);
+
+            //if an auction is finished, let us know about it and the winner details
             AuctionItem finishedAuction = Auctions.FirstOrDefault(a => !a.IsOpen);
             if(finishedAuction != null)
             {
@@ -155,13 +155,18 @@ internal class Program
 
     }
 
-
+    /// <summary>
+    /// Show us a list of user names
+    /// </summary>
     private static void ShowAllUsers()
     {
         var otherUsers = $"All connected users: {string.Join(",", UserNames.Select(u => u.Username))}";
         Console.WriteLine(otherUsers);
     }
 
+    /// <summary>
+    /// show us a list of all auctions
+    /// </summary>
     private static void ShowAllAuctions()
     {
         var otherAuctions = $"All available auctions: {string.Join(",", Auctions.Select(a=> $"id: {a.Id} - name: {a.ProductName} - current bid: {a.Cost} - winning: {a.Winner}"))}";
@@ -180,6 +185,9 @@ internal class Program
         Console.WriteLine("Hello, " + userName);
     }
 
+    /// <summary>
+    /// show the interface for users
+    /// </summary>
     static void ShowMenu()
     {
 
@@ -227,14 +235,19 @@ internal class Program
                             LobbyUserId = userID
                         });
 
+                        //update our list of auctions
                         Auctions.Clear();
                         Auctions.AddRange(createAuctionsResponse.Auctions);
 
 
                         break;
                     case "2":
-                        //Update Auction
-                        GetAuctions();
+                        //get an updated list of auctions
+                        GetAuctionsResponse getAuctionsResponse = _lobbyService.GetAuctions(new LobbyMessage());
+
+                        //update our list of auctions
+                        Auctions.Clear();
+                        Auctions.AddRange(getAuctionsResponse.Auctions);
                         break;
                     case "3":
                         // Bid on Auction
@@ -251,6 +264,7 @@ internal class Program
                             LobbyUserId = userID
                         });
 
+                        //update our list of auctions
                         Auctions.Clear();
                         Auctions.AddRange(submitBidResponse.Auctions);
                         break;
@@ -268,6 +282,7 @@ internal class Program
                                 AuctionItem = closingAuction,
                             });
 
+                            //update our list of auctions
                             Auctions.Clear();
                             Auctions.AddRange(closeAuctionResponse.Auctions);
                         }
@@ -293,11 +308,5 @@ internal class Program
         
     }
 
-    private static void GetAuctions()
-    {
-        GetAuctionsResponse getAuctionsResponse = _lobbyService.GetAuctions(new LobbyMessage());
 
-        Auctions.Clear();
-        Auctions.AddRange(getAuctionsResponse.Auctions);
-    }
 }
